@@ -22,6 +22,7 @@
 #define ONE_WIRE_BUS 27
 #define DHTPIN 25
 #define CS_PIN 5
+#define relayPin 4
 
 #define DHTTYPE DHT22                //defining the right sensor (we are working with the DHT22)
 AsyncWebServer server(80);           //creating a webserver instance
@@ -43,10 +44,10 @@ int Day;
 int Hour;
 int Minute;
 int interval = 1;
-int helpVarTimer1 = 0;
-int helpVarTimer2 = 0;
+int standardRoutineTimer = 0;
+int oldFilesTimer = 0;
+int pumpTimer =0;
 int daysTillDelete = 30;
-
 DeviceAddress tempDeviceAddress;
 //network credentials
 const char *ssid;
@@ -115,18 +116,45 @@ void setupJSON(String epoc);
 void registerMeasurement(String key, String value);
 void deleteSD();
 void deleteFile(String path);
+
+void pumpCheck();
+//creating struct for pumpPeriods
+struct period {
+  String beginTime;
+  String endTime;
+  int beginMinutes;
+  int beginHour;
+  int endMinutes;
+  int endHour;
+};
+struct period pumpPeriod_1;
+struct period pumpPeriod_2;
+struct period pumpPeriod_3;
+struct period pumpPeriod_4;
+int pp11;
+int pp12;
+int pp21;
+int pp22;
+int pp31;
+int pp32;
+int pp41;
+int pp42;
+bool turnPumpOn[3600];
+
 void loadConfiguration(const char *filename, Config &config);
 void saveConfiguration(const char *filename, const Config &config);
 void printFile(const char *filename);
 
 void IRAM_ATTR onTimer()
 {
-  helpVarTimer1++;
-  helpVarTimer2++;
+  standardRoutineTimer++;
+  oldFilesTimer++;
+  pumpTimer++;
 }
 
 void setup()
 {
+  pinMode(relayPin,OUTPUT);
   // start serial port
   Serial.begin(115200);
   initializeSPIFFS();
@@ -140,19 +168,26 @@ void setup()
 }
 void loop()
 {
-  if (helpVarTimer1 == interval)
+  if (standardRoutineTimer == interval)
   {
     logDate();
     getMeasurements();
     appendFile(nameOfFile, logInstance);
-    helpVarTimer1 = 0;
+    standardRoutineTimer = 0;
     logInstance = "";
     jsonDoc.clear();
+     
   }
-  if (helpVarTimer2 == 60)
+  if (oldFilesTimer == 60)
   {
     deleteOldFiles();
+    oldFilesTimer =0;
   }
+  if(pumpTimer == 1){
+    pumpTimer =0;
+    pumpCheck();
+  }
+
 }
 
 //all the methods and functions
@@ -345,11 +380,15 @@ void initializeDashboard()
     if (request->hasParam(PARAM_INPUT_2))
     {
       IM2 = request->getParam(PARAM_INPUT_2)->value();
+
+ 
+
       if (IM2 != "") {
         Serial.println(IM2);
         interval = IM2.toInt();
-        helpVarTimer1 = 0;
+       standardRoutineTimer = 0;
       }
+
     }
     else
     {
@@ -436,10 +475,154 @@ void initializeDashboard()
       IP3 = "";
     }
   });
+  server.on("/pumpsettings", HTTP_GET, [](AsyncWebServerRequest * request) {
+    PARAM_INPUT_1 = "pumpPeriod11";
+    PARAM_INPUT_2 = "pumpPeriod12";
+    PARAM_INPUT_3 = "pumpPeriod21";
+    PARAM_INPUT_4 = "pumpPeriod22";
+    PARAM_INPUT_5 = "pumpPeriod31";
+    PARAM_INPUT_6 = "pumpPeriod32";
+    PARAM_INPUT_7 = "pumpPeriod41";
+    PARAM_INPUT_8 = "pumpPeriod42";
+    //pump period 1
+    if (request->hasParam(PARAM_INPUT_1))
+    {
+      pumpPeriod_1.beginTime = request->getParam(PARAM_INPUT_1)->value();
+      pumpPeriod_1.beginHour = pumpPeriod_1.beginTime.substring(0, 2).toInt();
+      pumpPeriod_1.beginMinutes = pumpPeriod_1.beginTime.substring(3).toInt();
+    }
+    else
+    {
+      pumpPeriod_1.beginTime = "";
+    }
+    if (request->hasParam(PARAM_INPUT_2))
+    {
+      pumpPeriod_1.endTime = request->getParam(PARAM_INPUT_2)->value();
+      pumpPeriod_1.endHour = pumpPeriod_1.endTime.substring(0, 2).toInt();
+      pumpPeriod_1.endMinutes = pumpPeriod_1.endTime.substring(3).toInt();
+    }
+    else
+    {
+      pumpPeriod_1.endTime = "";
+    }
+    //pump period 2
+    if (request->hasParam(PARAM_INPUT_3))
+    {
+      pumpPeriod_2.beginTime = request->getParam(PARAM_INPUT_3)->value();
+      pumpPeriod_2.beginHour = pumpPeriod_2.beginTime.substring(0, 2).toInt();
+      pumpPeriod_2.beginMinutes = pumpPeriod_2.beginTime.substring(3).toInt();
+    }
+    else
+    {
+      pumpPeriod_2.beginTime = "";
+    }
+    if (request->hasParam(PARAM_INPUT_4))
+    {
+      pumpPeriod_2.endTime = request->getParam(PARAM_INPUT_4)->value();
+      pumpPeriod_2.endHour = pumpPeriod_2.endTime.substring(0, 2).toInt();
+      pumpPeriod_2.endMinutes = pumpPeriod_2.endTime.substring(3).toInt();
+    }
+    else
+    {
+      pumpPeriod_2.endTime = "";
+    }
+    //pump period 3
+    if (request->hasParam(PARAM_INPUT_5))
+    {
+      pumpPeriod_3.beginTime = request->getParam(PARAM_INPUT_5)->value();
+      pumpPeriod_3.beginHour = pumpPeriod_3.beginTime.substring(0, 2).toInt();
+      pumpPeriod_3.beginMinutes = pumpPeriod_3.beginTime.substring(3).toInt();
+    }
+    else
+    {
+      pumpPeriod_3.beginTime = "";
+    }
+    if (request->hasParam(PARAM_INPUT_6))
+    {
+      pumpPeriod_3.endTime = request->getParam(PARAM_INPUT_6)->value();
+      pumpPeriod_3.endHour = pumpPeriod_3.endTime.substring(0, 2).toInt();
+      pumpPeriod_3.endMinutes = pumpPeriod_3.endTime.substring(3).toInt();
+    }
+    else
+    {
+      pumpPeriod_3.endTime = "";
+    }
+    //pump period 4
+    if (request->hasParam(PARAM_INPUT_7))
+    {
+      pumpPeriod_4.beginTime = request->getParam(PARAM_INPUT_7)->value();
+      pumpPeriod_4.beginHour = pumpPeriod_4.beginTime.substring(0, 2).toInt();
+      pumpPeriod_4.beginMinutes = pumpPeriod_4.beginTime.substring(3).toInt();
+    }
+    else
+    {
+      pumpPeriod_4.beginTime = "";
+    }
+    if (request->hasParam(PARAM_INPUT_8))
+    {
+      pumpPeriod_4.endTime = request->getParam(PARAM_INPUT_8)->value();
+      pumpPeriod_4.endHour = pumpPeriod_4.endTime.substring(0, 2).toInt();
+      pumpPeriod_4.endMinutes = pumpPeriod_4.endTime.substring(3).toInt();
+    }
+    else
+    {
+      pumpPeriod_4.endTime = "";
+    }
+    pumpCheck();
+    request->send(200, "text/html", style + "<h1>Setting were changed!</h1><br><a href=\"/\">Return to Home Page</a>");
+
+  });
   server.begin();
 }
+int minutesSinceMidnight(String input) {
+  return input.substring(0, 2).toInt() * 60 + input.substring(3).toInt();
+}
+void pumpCheck() {
+  DateTime now = rtc.now();
+  char buf2[] = "hh:mm";
+  
+  bool state; 
+  for (int i = 0; i <= 3600; i++) {
+    turnPumpOn[i] = false;
+  }
+  if (pumpPeriod_1.beginTime != "" || pumpPeriod_1.endTime != "") {
+    pp11 = minutesSinceMidnight(pumpPeriod_1.beginTime);
+    pp12 = minutesSinceMidnight(pumpPeriod_1.endTime);
+    for (int i = pp11; i <= pp12; i++) {
+      turnPumpOn[i] = true;
+    }
 
-//theze methods are used to measure the temperatures and currents
+  }
+
+  if (pumpPeriod_2.beginTime != "" || pumpPeriod_2.endTime != "") {
+    pp21 = minutesSinceMidnight(pumpPeriod_2.beginTime);
+    pp22 = minutesSinceMidnight(pumpPeriod_2.endTime);
+    for (int i = pp21; i <= pp22; i++) {
+      turnPumpOn[i] = true;
+    }
+  }
+
+  if (pumpPeriod_3.beginTime != "" || pumpPeriod_3.endTime != "") {
+    pp31 = minutesSinceMidnight(pumpPeriod_3.beginTime);
+    pp32 = minutesSinceMidnight(pumpPeriod_3.endTime);
+    for (int i = pp31; i <= pp32; i++) {
+      turnPumpOn[i] = true;
+    }
+  }
+
+  if (pumpPeriod_4.beginTime != "" || pumpPeriod_4.endTime != "") {
+    pp41 = minutesSinceMidnight(pumpPeriod_4.beginTime);
+    pp42 = minutesSinceMidnight(pumpPeriod_4.endTime);
+    for (int i = pp41; i <= pp42; i++) {
+      turnPumpOn[i] = true;
+    }
+  }
+   state = turnPumpOn[minutesSinceMidnight(now.toString(buf2))];
+   Serial.println(state);
+   digitalWrite(relayPin, state);
+   
+}
+//these functions are used to measure the temperatures and currents
 String measureDallasTemp(char index)
 {
   char object;
