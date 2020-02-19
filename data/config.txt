@@ -1,0 +1,7 @@
+{
+  "measureInterval": 15,
+  "daysTillDelete": 30,
+  "ssid": "Lappies",
+  "password": "123456789",
+  "hostname": "lappies"
+}

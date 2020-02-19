@@ -50,8 +50,8 @@ int pumpTimer =0;
 int daysTillDelete = 30;
 DeviceAddress tempDeviceAddress;
 //network credentials
-const char *ssid = "LappiesV3.0";
-const char *password = "12345678";
+const char *ssid;
+const char *password;
 //webinterface inputs
 const char *PARAM_INPUT_1;
 const char *PARAM_INPUT_2;
@@ -79,9 +79,22 @@ String logInstance = "[";
 String nameOfFile;
 String rootpath = "/";
 
+struct Config {
+  int measureInterval;
+  int daysTillDelete;
+  char ssid[64];
+  char password[64];
+  char hostname[64];
+};
+bool restart;
+
+const char *filename = "/config.txt";
+Config config;
+
 //all prototypes
 void printAddress(DeviceAddress deviceAddress);
 void initializeSPIFFS();
+void initializeConfig();
 void initializeTimer();
 void initializeRTC();
 void initializeSensors();
@@ -103,6 +116,7 @@ void setupJSON(String epoc);
 void registerMeasurement(String key, String value);
 void deleteSD();
 void deleteFile(String path);
+
 void pumpCheck();
 //creating struct for pumpPeriods
 struct period {
@@ -126,6 +140,11 @@ int pp32;
 int pp41;
 int pp42;
 bool turnPumpOn[3600];
+
+void loadConfiguration(const char *filename, Config &config);
+void saveConfiguration(const char *filename, const Config &config);
+void printFile(const char *filename);
+
 void IRAM_ATTR onTimer()
 {
   standardRoutineTimer++;
@@ -139,6 +158,7 @@ void setup()
   // start serial port
   Serial.begin(115200);
   initializeSPIFFS();
+  initializeConfig();
   initializeTimer();
   initializeRTC();
   initializeSensors();
@@ -189,6 +209,19 @@ void initializeSPIFFS()
     return;
   }
 }
+
+void initializeConfig()
+{
+  Serial.println(F("Loading configuration..."));
+  loadConfiguration(filename, config);
+  ssid = config.ssid;
+  password = config.password;
+  interval = config.measureInterval;
+  Serial.println(ssid);
+  Serial.println(password);
+
+}
+
 void initializeTimer()
 {
   Serial.println("start timer");
@@ -260,6 +293,20 @@ void initializeRTC()
   }
   // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   Serial.println("RTC is initialized");
+  Serial.println("The current date and time is: ");
+  DateTime now = rtc.now();
+  Serial.print(now.year(), DEC);
+  Serial.print('/');
+  Serial.print(now.month(), DEC);
+  Serial.print('/');
+  Serial.print(now.day(), DEC);
+  Serial.print("\t");
+  Serial.print(now.hour(), DEC);
+  Serial.print(':');
+  Serial.print(now.minute(), DEC);
+  Serial.print(':');
+  Serial.print(now.second(), DEC);
+  Serial.println();
 }
 void initializeDashboard()
 {
@@ -305,38 +352,77 @@ void initializeDashboard()
   server.on("/systemsettings", HTTP_GET, [](AsyncWebServerRequest * request) {
     PARAM_INPUT_1 = "dateTime";
     PARAM_INPUT_2 = "measureInterval";
+    PARAM_INPUT_3 = "ssid";
+    PARAM_INPUT_4 = "password";
+    PARAM_INPUT_5 = "hostname";
+    PARAM_INPUT_6 = "daysTillDelete";
+
     if (request->hasParam(PARAM_INPUT_1))
     {
       IM1 = request->getParam(PARAM_INPUT_1)->value();
-      IP1 = PARAM_INPUT_1;
-      Year = IM1.substring(0, 4).toInt();
-      Month = IM1.substring(5, 7).toInt();
-      Day = IM1.substring(8, 10).toInt();
-      Hour = IM1.substring(11, 13).toInt();
-      Minute = IM1.substring(14).toInt();
-      rtc.adjust(DateTime(Year, Month, Day, Hour, Minute, 0));
-      Serial.println("Time Was Set to: ");
-      Serial.println(IM1);
-      WebSerial.println("Time Was Set to: ");
-      WebSerial.println(IM1);
+      if (IM1 != "") {
+        Year = IM1.substring(0, 4).toInt();
+        Month = IM1.substring(5, 7).toInt();
+        Day = IM1.substring(8, 10).toInt();
+        Hour = IM1.substring(11, 13).toInt();
+        Minute = IM1.substring(14).toInt();
+        rtc.adjust(DateTime(Year, Month, Day, Hour, Minute, 0));
+        Serial.println("Time Was Set to: ");
+        Serial.println(IM1);
+        WebSerial.println("Time Was Set to: ");
+        WebSerial.println(IM1);
+      }
     }
     else
     {
       IM1 = "";
-      IP1 = "";
     }
     if (request->hasParam(PARAM_INPUT_2))
     {
       IM2 = request->getParam(PARAM_INPUT_2)->value();
-      IP2 = PARAM_INPUT_2;
-      Serial.println(IM2);
-      interval = IM2.toInt();
-      standardRoutineTimer = 0;
+
+ 
+
+      if (IM2 != "") {
+        Serial.println(IM2);
+        interval = IM2.toInt();
+       standardRoutineTimer = 0;
+      }
+
     }
     else
     {
       IM2 = "";
-      IP2 = "";
+    }
+    if ((request->hasParam(PARAM_INPUT_3)) || (request->hasParam(PARAM_INPUT_4)))
+    {
+      if (request->getParam(PARAM_INPUT_3)->value() != "") {
+        String ssidTemp = request->getParam(PARAM_INPUT_3)->value();
+        strcpy(config.ssid, ssidTemp.c_str());
+        saveConfiguration(filename, config);
+        restart = true;
+      }
+      if (request->getParam(PARAM_INPUT_4)->value() != "") {
+        String passwTemp = request->getParam(PARAM_INPUT_4)->value();
+        strcpy(config.password, passwTemp.c_str());
+        saveConfiguration(filename, config);
+        restart = true;
+      }
+      if (restart) {
+        request->redirect("/");
+        ESP.restart();
+        restart = false;
+      }
+    }
+    else
+    {
+      IM2 = "";
+    }
+    if (request->hasParam(PARAM_INPUT_6)) {
+      if (request->getParam(PARAM_INPUT_6)->value() != "") {
+        daysTillDelete = request->getParam(PARAM_INPUT_6)->value().toInt();
+        Serial.println(daysTillDelete);
+      }
     }
     request->send(200, "text/html", style + "<h1>Setting were changed!</h1><br><a href=\"/\">Return to Home Page</a>");
   });
@@ -699,7 +785,7 @@ void logDate()
 }
 
 //webinterface methods and functions
-void notFound(AsyncWebServerRequest *request)
+void notFound(AsyncWebServerRequest * request)
 {
   request->send(404, "text/plain", "Not found");
 }
@@ -745,7 +831,7 @@ String handleRoot()
   return res;
 }
 
-bool loadFromSdCard(AsyncWebServerRequest *request)
+bool loadFromSdCard(AsyncWebServerRequest * request)
 {
   String path = request->url();
   String dataType = "text/plain";
@@ -812,7 +898,7 @@ bool loadFromSdCard(AsyncWebServerRequest *request)
   return true;
 }
 
-void handleNotFound(AsyncWebServerRequest *request)
+void handleNotFound(AsyncWebServerRequest * request)
 {
   String path = request->url();
   if (path.endsWith("/"))
@@ -871,7 +957,7 @@ String mostRecentFile() {
   return mostRecent;
 }
 
-void downloadLog(AsyncWebServerRequest *request, String filename) {
+void downloadLog(AsyncWebServerRequest * request, String filename) {
   String path = filename;
   String dataType = "text/plain";
   struct fileBlk
@@ -910,4 +996,70 @@ void downloadLog(AsyncWebServerRequest *request, String filename) {
       delete fileObj;
     }
   });
+}
+
+// Loads the configuration from a file
+void loadConfiguration(const char *filename, Config & config) {
+  File file = SPIFFS.open(filename);
+  StaticJsonDocument<512> doc;
+  DeserializationError error = deserializeJson(doc, file);
+
+  if (error) {
+    Serial.println(F("Failed to read file, using default configuration"));
+    WebSerial.println(F("Failed to read file, using default configuration"));
+  }
+  config.measureInterval = doc["measureInterval"] | 15;
+  config.daysTillDelete = doc["daysTillDelete"] | 30;
+  strlcpy(config.ssid,                      // <- destination
+          doc["ssid"] | "Lappies",          // <- source
+          sizeof(config.ssid));             // <- destination's capacity
+  strlcpy(config.password,                  // <- destination
+          doc["password"] | "12345678",      // <- source
+          sizeof(config.password));         // <- destination's capacity
+  strlcpy(config.hostname,                  // <- destination
+          doc["hostname"] | "lappies",      // <- source
+          sizeof(config.hostname));         // <- destination's capacity
+  file.close();
+}
+
+// Saves the configuration to a file
+void saveConfiguration(const char *filename, const Config & config) {
+  SPIFFS.remove(filename);
+  File file = SPIFFS.open(filename, FILE_WRITE);
+  if (!file) {
+    Serial.println(F("Failed to create file"));
+    WebSerial.println(F("Failed to create file"));
+    return;
+  }
+
+  StaticJsonDocument<256> doc;
+
+  doc["measureInterval"] = config.measureInterval;
+  doc["ssid"] = config.ssid;
+  doc["password"] = config.password;
+  doc["hostname"] = config.hostname;
+
+  if (serializeJson(doc, file) == 0) {
+    Serial.println(F("Failed to write to file"));
+    WebSerial.println(F("Failed to write to file"));
+  }
+
+  file.close();
+}
+
+// Prints the content of a config file to the Serial
+void printFile(const char *filename) {
+  File file = SPIFFS.open(filename);
+  if (!file) {
+    Serial.println(F("Failed to read file"));
+    WebSerial.println(F("Failed to read file"));
+    return;
+  }
+
+  while (file.available()) {
+    Serial.print((char)file.read());
+    WebSerial.print((char)file.read());
+  }
+  Serial.println();
+  file.close();
 }
