@@ -1,5 +1,4 @@
 //including the libraries
-//finnstinktnaarrottevis
 #include <RTClib.h>
 #include <Wire.h>
 #include <SPI.h>
@@ -46,12 +45,13 @@ int Minute;
 int interval = 1;
 int standardRoutineTimer = 0;
 int oldFilesTimer = 0;
-int pumpTimer =0;
+int pumpTimer = 0;
 int daysTillDelete = 30;
 DeviceAddress tempDeviceAddress;
 //network credentials
 const char *ssid;
 const char *password;
+const char *hostname;
 //webinterface inputs
 const char *PARAM_INPUT_1;
 const char *PARAM_INPUT_2;
@@ -154,7 +154,7 @@ void IRAM_ATTR onTimer()
 
 void setup()
 {
-  pinMode(relayPin,OUTPUT);
+  pinMode(relayPin, OUTPUT);
   // start serial port
   Serial.begin(115200);
   initializeSPIFFS();
@@ -176,15 +176,15 @@ void loop()
     standardRoutineTimer = 0;
     logInstance = "";
     jsonDoc.clear();
-     
+
   }
   if (oldFilesTimer == 60)
   {
     deleteOldFiles();
-    oldFilesTimer =0;
+    oldFilesTimer = 0;
   }
-  if(pumpTimer == 1){
-    pumpTimer =0;
+  if (pumpTimer == 1) {
+    pumpTimer = 0;
     pumpCheck();
   }
 
@@ -200,7 +200,9 @@ void printAddress(DeviceAddress deviceAddress)
     Serial.print(deviceAddress[i], HEX);
   }
 }
+
 //all the initialize methods
+//initialize file system
 void initializeSPIFFS()
 {
   if (!SPIFFS.begin())
@@ -210,18 +212,21 @@ void initializeSPIFFS()
   }
 }
 
+//initialize config file
 void initializeConfig()
 {
   Serial.println(F("Loading configuration..."));
   loadConfiguration(filename, config);
   ssid = config.ssid;
   password = config.password;
+  hostname = config.hostname;
   interval = config.measureInterval;
   Serial.println(ssid);
   Serial.println(password);
-
+  Serial.println(hostname);
 }
 
+//initialize timer
 void initializeTimer()
 {
   Serial.println("start timer");
@@ -231,6 +236,8 @@ void initializeTimer()
   timerAlarmEnable(timer);
   Serial.println("Timer is initialized");
 }
+
+//initialize all the sensors
 void initializeSensors()
 {
   // Start up the library's
@@ -266,6 +273,8 @@ void initializeSensors()
   }
   Serial.println("Sensors are initialized");
 }
+
+//initialize SD-module
 void initializeSD()
 {
   if (!SD.begin(CS_PIN))
@@ -282,6 +291,8 @@ void initializeSD()
   }
   Serial.println("SD is initialized");
 }
+
+//initialize RTC-module
 void initializeRTC()
 {
   rtc.begin();
@@ -308,12 +319,14 @@ void initializeRTC()
   Serial.print(now.second(), DEC);
   Serial.println();
 }
+
+//webserver responses
 void initializeDashboard()
 {
   // Connect to Wi-Fi network with SSID and password
   Serial.print("Setting AP (Access Point)…");
-  // Remove the password parameter, if you want the AP (Access Point) to be open
   WiFi.softAP(ssid, password);
+  WiFi.setHostname("node1");
   WebSerial.begin(&server);
   IPAddress IP = WiFi.softAPIP();
   Serial.print("AP IP address: ");
@@ -381,12 +394,12 @@ void initializeDashboard()
     {
       IM2 = request->getParam(PARAM_INPUT_2)->value();
 
- 
+
 
       if (IM2 != "") {
         Serial.println(IM2);
         interval = IM2.toInt();
-       standardRoutineTimer = 0;
+        standardRoutineTimer = 0;
       }
 
     }
@@ -577,11 +590,13 @@ void initializeDashboard()
 int minutesSinceMidnight(String input) {
   return input.substring(0, 2).toInt() * 60 + input.substring(3).toInt();
 }
+
+//check if the pump needs to be turned on
 void pumpCheck() {
   DateTime now = rtc.now();
   char buf2[] = "hh:mm";
-  
-  bool state; 
+
+  bool state;
   for (int i = 0; i <= 3600; i++) {
     turnPumpOn[i] = false;
   }
@@ -617,12 +632,15 @@ void pumpCheck() {
       turnPumpOn[i] = true;
     }
   }
-   state = turnPumpOn[minutesSinceMidnight(now.toString(buf2))];
-   Serial.println(state);
-   digitalWrite(relayPin, state);
-   
+  state = turnPumpOn[minutesSinceMidnight(now.toString(buf2))];
+  Serial.println(state);
+  digitalWrite(relayPin, state);
+
 }
+
 //these functions are used to measure the temperatures and currents
+
+//measure temperature from probe
 String measureDallasTemp(char index)
 {
   char object;
@@ -643,6 +661,7 @@ String measureDallasTemp(char index)
   }
 }
 
+//measure ambient humidity
 String measureDHThum()
 {
   float humidity = dht.readHumidity();
@@ -650,6 +669,8 @@ String measureDHThum()
   hum = String(humidity);
   return hum;
 }
+
+//measure ambient temperature
 String measureDHTtemp()
 {
   float temperature = dht.readTemperature();
@@ -657,6 +678,8 @@ String measureDHTtemp()
   temp = String(temperature);
   return temp;
 }
+
+//get measurements
 void getMeasurements()
 {
   registerMeasurement("Twater", measureDallasTemp(0));
@@ -676,6 +699,7 @@ String generateFileName()
   return generatedFileName;
 }
 
+//append log file
 void appendFile(String path, String message)
 {
   File SDlog = SD.open(path, FILE_APPEND);
@@ -703,6 +727,7 @@ void appendFile(String path, String message)
   SDlog.close();
 }
 
+//delete log file
 void deleteFile(String path) {
   Serial.printf("Deleting file: %s\n", path);
   if (SD.remove(path)) {
@@ -713,6 +738,8 @@ void deleteFile(String path) {
     WebSerial.println("Delete failed");
   }
 }
+
+//delete all log files
 void deleteSD() {
   File root = SD.open("/");
   if (!root) {
@@ -738,6 +765,8 @@ void deleteSD() {
     file = root.openNextFile();
   }
 }
+
+//deletes files that are older than daysTillDelete
 void deleteOldFiles() {
   String filename;
   DateTime now = rtc.now();
@@ -773,6 +802,8 @@ void deleteOldFiles() {
     file = root.openNextFile();
   }
 }
+
+
 void logDate()
 {
   //creating a datetime variable
@@ -780,7 +811,6 @@ void logDate()
   char buf2[] = "YY/MM/DD-hh:mm:ss";
   Serial.println(now.toString(buf2));
   WebSerial.println(now.toString(buf2));
-
   setupJSON(String(now.unixtime()));
 }
 
@@ -791,7 +821,7 @@ void notFound(AsyncWebServerRequest * request)
 }
 
 //the following functions are used to print the log files
-//on the SD-card to the webserver.........
+//on the SD-card to the webserver
 String printDirectory(File dir, int numTabs)
 {
   String response = "";
@@ -939,6 +969,7 @@ void setupJSON(String epoc)
   measurements = jsonDoc.createNestedArray("measurements");
 }
 
+//returns most recent log file
 String mostRecentFile() {
   File root = SD.open("/");
   File file = root.openNextFile();
@@ -953,7 +984,6 @@ String mostRecentFile() {
   Serial.println(mostRecent);
   WebSerial.print("Most Recent Log File: ");
   WebSerial.println(mostRecent);
-
   return mostRecent;
 }
 
@@ -1044,22 +1074,5 @@ void saveConfiguration(const char *filename, const Config & config) {
     WebSerial.println(F("Failed to write to file"));
   }
 
-  file.close();
-}
-
-// Prints the content of a config file to the Serial
-void printFile(const char *filename) {
-  File file = SPIFFS.open(filename);
-  if (!file) {
-    Serial.println(F("Failed to read file"));
-    WebSerial.println(F("Failed to read file"));
-    return;
-  }
-
-  while (file.available()) {
-    Serial.print((char)file.read());
-    WebSerial.print((char)file.read());
-  }
-  Serial.println();
   file.close();
 }
