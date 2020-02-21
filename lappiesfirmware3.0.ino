@@ -183,10 +183,9 @@ void loop()
     deleteOldFiles();
     oldFilesTimer = 0;
   }
-  if (pumpTimer == 1) {
-    pumpTimer = 0;
+
     pumpCheck();
-  }
+  
 
 }
 
@@ -277,6 +276,7 @@ void initializeSensors()
 //initialize SD-module
 void initializeSD()
 {
+ 
   if (!SD.begin(CS_PIN))
   {
     Serial.println("Card Mount Failed");
@@ -581,12 +581,15 @@ void initializeDashboard()
     {
       pumpPeriod_4.endTime = "";
     }
-    pumpCheck();
+    for (int i = 0; i <= 3600; i++) {
+      turnPumpOn[i] = false;
+    }
     request->send(200, "text/html", style + "<h1>Setting were changed!</h1><br><a href=\"/\">Return to Home Page</a>");
 
   });
   server.begin();
 }
+
 int minutesSinceMidnight(String input) {
   return input.substring(0, 2).toInt() * 60 + input.substring(3).toInt();
 }
@@ -597,9 +600,12 @@ void pumpCheck() {
   char buf2[] = "hh:mm";
 
   bool state;
+
+
   for (int i = 0; i <= 3600; i++) {
     turnPumpOn[i] = false;
   }
+
   if (pumpPeriod_1.beginTime != "" || pumpPeriod_1.endTime != "") {
     pp11 = minutesSinceMidnight(pumpPeriod_1.beginTime);
     pp12 = minutesSinceMidnight(pumpPeriod_1.endTime);
@@ -633,7 +639,7 @@ void pumpCheck() {
     }
   }
   state = turnPumpOn[minutesSinceMidnight(now.toString(buf2))];
-  Serial.println(state);
+
   digitalWrite(relayPin, state);
 
 }
@@ -702,6 +708,7 @@ String generateFileName()
 //append log file
 void appendFile(String path, String message)
 {
+  
   File SDlog = SD.open(path, FILE_APPEND);
   Serial.print("Appending to file: ");
   Serial.println(String(SDlog.name()));
@@ -737,6 +744,7 @@ void deleteFile(String path) {
     Serial.println("Delete failed");
     WebSerial.println("Delete failed");
   }
+ // SD.close(path);
 }
 
 //delete all log files
@@ -764,6 +772,7 @@ void deleteSD() {
     }
     file = root.openNextFile();
   }
+  root.close();
 }
 
 //deletes files that are older than daysTillDelete
@@ -801,6 +810,7 @@ void deleteOldFiles() {
     }
     file = root.openNextFile();
   }
+  root.close();
 }
 
 
@@ -858,6 +868,7 @@ String handleRoot()
 {
   root = SD.open("/");
   String res = printDirectory(root, 0);
+  root.close();
   return res;
 }
 
@@ -925,6 +936,7 @@ bool loadFromSdCard(AsyncWebServerRequest * request)
     }
     return thisSize;
   });
+//  dataFile.close();
   return true;
 }
 
@@ -985,6 +997,7 @@ String mostRecentFile() {
   WebSerial.print("Most Recent Log File: ");
   WebSerial.println(mostRecent);
   return mostRecent;
+  root.close();
 }
 
 void downloadLog(AsyncWebServerRequest * request, String filename) {
@@ -1026,6 +1039,7 @@ void downloadLog(AsyncWebServerRequest * request, String filename) {
       delete fileObj;
     }
   });
+ // dataFile.close();
 }
 
 // Loads the configuration from a file
