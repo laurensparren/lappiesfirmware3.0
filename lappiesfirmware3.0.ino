@@ -1,5 +1,4 @@
 //including the libraries
-//finnstinktnaarrottevis
 #include <RTClib.h>
 #include <Wire.h>
 #include <SPI.h>
@@ -46,7 +45,7 @@ int Minute;
 int interval = 1;
 int standardRoutineTimer = 0;
 int oldFilesTimer = 0;
-int pumpTimer =0;
+int pumpTimer = 0;
 int daysTillDelete = 30;
 DeviceAddress tempDeviceAddress;
 //network credentials
@@ -154,7 +153,7 @@ void IRAM_ATTR onTimer()
 
 void setup()
 {
-  pinMode(relayPin,OUTPUT);
+  pinMode(relayPin, OUTPUT);
   // start serial port
   Serial.begin(115200);
   initializeSPIFFS();
@@ -176,17 +175,16 @@ void loop()
     standardRoutineTimer = 0;
     logInstance = "";
     jsonDoc.clear();
-     
+
   }
   if (oldFilesTimer == 60)
   {
     deleteOldFiles();
-    oldFilesTimer =0;
+    oldFilesTimer = 0;
   }
-  if(pumpTimer == 1){
-    pumpTimer =0;
+
     pumpCheck();
-  }
+  
 
 }
 
@@ -268,6 +266,7 @@ void initializeSensors()
 }
 void initializeSD()
 {
+ 
   if (!SD.begin(CS_PIN))
   {
     Serial.println("Card Mount Failed");
@@ -381,12 +380,12 @@ void initializeDashboard()
     {
       IM2 = request->getParam(PARAM_INPUT_2)->value();
 
- 
+
 
       if (IM2 != "") {
         Serial.println(IM2);
         interval = IM2.toInt();
-       standardRoutineTimer = 0;
+        standardRoutineTimer = 0;
       }
 
     }
@@ -568,23 +567,24 @@ void initializeDashboard()
     {
       pumpPeriod_4.endTime = "";
     }
-    pumpCheck();
+    for (int i = 0; i <= 3600; i++) {
+      turnPumpOn[i] = false;
+    }
     request->send(200, "text/html", style + "<h1>Setting were changed!</h1><br><a href=\"/\">Return to Home Page</a>");
 
   });
   server.begin();
 }
+
 int minutesSinceMidnight(String input) {
   return input.substring(0, 2).toInt() * 60 + input.substring(3).toInt();
 }
 void pumpCheck() {
   DateTime now = rtc.now();
   char buf2[] = "hh:mm";
-  
-  bool state; 
-  for (int i = 0; i <= 3600; i++) {
-    turnPumpOn[i] = false;
-  }
+
+  bool state;
+
   if (pumpPeriod_1.beginTime != "" || pumpPeriod_1.endTime != "") {
     pp11 = minutesSinceMidnight(pumpPeriod_1.beginTime);
     pp12 = minutesSinceMidnight(pumpPeriod_1.endTime);
@@ -617,10 +617,9 @@ void pumpCheck() {
       turnPumpOn[i] = true;
     }
   }
-   state = turnPumpOn[minutesSinceMidnight(now.toString(buf2))];
-   Serial.println(state);
-   digitalWrite(relayPin, state);
-   
+  state = turnPumpOn[minutesSinceMidnight(now.toString(buf2))];
+  digitalWrite(relayPin, state);
+
 }
 //these functions are used to measure the temperatures and currents
 String measureDallasTemp(char index)
@@ -678,6 +677,7 @@ String generateFileName()
 
 void appendFile(String path, String message)
 {
+  
   File SDlog = SD.open(path, FILE_APPEND);
   Serial.print("Appending to file: ");
   Serial.println(String(SDlog.name()));
@@ -712,6 +712,7 @@ void deleteFile(String path) {
     Serial.println("Delete failed");
     WebSerial.println("Delete failed");
   }
+ // SD.close(path);
 }
 void deleteSD() {
   File root = SD.open("/");
@@ -737,6 +738,7 @@ void deleteSD() {
     }
     file = root.openNextFile();
   }
+  root.close();
 }
 void deleteOldFiles() {
   String filename;
@@ -772,6 +774,7 @@ void deleteOldFiles() {
     }
     file = root.openNextFile();
   }
+  root.close();
 }
 void logDate()
 {
@@ -828,6 +831,7 @@ String handleRoot()
 {
   root = SD.open("/");
   String res = printDirectory(root, 0);
+  root.close();
   return res;
 }
 
@@ -895,6 +899,7 @@ bool loadFromSdCard(AsyncWebServerRequest * request)
     }
     return thisSize;
   });
+//  dataFile.close();
   return true;
 }
 
@@ -955,6 +960,7 @@ String mostRecentFile() {
   WebSerial.println(mostRecent);
 
   return mostRecent;
+  root.close();
 }
 
 void downloadLog(AsyncWebServerRequest * request, String filename) {
@@ -996,6 +1002,7 @@ void downloadLog(AsyncWebServerRequest * request, String filename) {
       delete fileObj;
     }
   });
+ // dataFile.close();
 }
 
 // Loads the configuration from a file
